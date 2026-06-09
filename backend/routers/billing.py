@@ -59,56 +59,6 @@ def calculate_bill(items: List[dict]) -> dict:
         "self_amount": round(self_total, 2),
     }
 
-@router.get("")
-def list_bills(patient_id: Optional[str] = None, doctor_id: Optional[str] = None, status: Optional[str] = None):
-    bills = db.get_all("bills")
-    result = []
-    for bid, bill in bills.items():
-        if patient_id and bill["patient_id"] != patient_id:
-            continue
-        if doctor_id and bill.get("doctor_id") != doctor_id:
-            continue
-        if status and bill["status"] != status:
-            continue
-        result.append({"id": bid, **bill})
-    result.sort(key=lambda x: x["created_at"], reverse=True)
-    return result
-
-@router.get("/{bill_id}")
-def get_bill(bill_id: str):
-    bill = db.get_by_id("bills", bill_id)
-    if not bill:
-        raise HTTPException(status_code=404, detail="账单不存在")
-    return {"id": bill_id, **bill}
-
-@router.post("")
-def create_bill(data: BillCreate):
-    patient = db.get_by_id("patients", data.patient_id)
-    if not patient:
-        raise HTTPException(status_code=404, detail="患者不存在")
-    
-    items_data = [item.model_dump() for item in data.items]
-    amounts = calculate_bill(items_data)
-    
-    bill_id = str(uuid.uuid4())
-    bill = {
-        "patient_id": data.patient_id,
-        "patient_name": data.patient_name,
-        "chart_id": data.chart_id,
-        "appointment_id": data.appointment_id,
-        "doctor_id": data.doctor_id,
-        "items": items_data,
-        "total_amount": amounts["total_amount"],
-        "insurance_amount": amounts["insurance_amount"],
-        "self_amount": amounts["self_amount"],
-        "payment_method": data.payment_method,
-        "status": "paid",
-        "created_at": datetime.now().isoformat(),
-    }
-    db.add("bills", bill, bill_id)
-    
-    return {"id": bill_id, **bill}
-
 @router.get("/insurance-catalog")
 def get_insurance_catalog(category: Optional[str] = None):
     catalog = db.get_all("insurance_catalog")
@@ -134,6 +84,25 @@ def update_insurance_item(code: str, item_data: dict):
     updated = {**item, **item_data}
     db.update("insurance_catalog", code, updated)
     return {"code": code, **updated}
+
+@router.post("/insurance-catalog")
+def create_insurance_item(item_data: dict):
+    code = item_data.get("code")
+    if not code:
+        raise HTTPException(status_code=400, detail="项目编码必填")
+    existing = db.get_by_id("insurance_catalog", code)
+    if existing:
+        raise HTTPException(status_code=400, detail="项目编码已存在")
+    db.add("insurance_catalog", item_data, code)
+    return {"code": code, **item_data}
+
+@router.delete("/insurance-catalog/{code}")
+def delete_insurance_item(code: str):
+    item = db.get_by_id("insurance_catalog", code)
+    if not item:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    db.delete("insurance_catalog", code)
+    return {"status": "deleted"}
 
 @router.get("/print/{bill_id}/insurance")
 def print_insurance_receipt(bill_id: str):
@@ -189,3 +158,53 @@ def print_self_receipt(bill_id: str):
         ],
         "self_total": bill["self_amount"],
     }
+
+@router.get("")
+def list_bills(patient_id: Optional[str] = None, doctor_id: Optional[str] = None, status: Optional[str] = None):
+    bills = db.get_all("bills")
+    result = []
+    for bid, bill in bills.items():
+        if patient_id and bill["patient_id"] != patient_id:
+            continue
+        if doctor_id and bill.get("doctor_id") != doctor_id:
+            continue
+        if status and bill["status"] != status:
+            continue
+        result.append({"id": bid, **bill})
+    result.sort(key=lambda x: x["created_at"], reverse=True)
+    return result
+
+@router.get("/{bill_id}")
+def get_bill(bill_id: str):
+    bill = db.get_by_id("bills", bill_id)
+    if not bill:
+        raise HTTPException(status_code=404, detail="账单不存在")
+    return {"id": bill_id, **bill}
+
+@router.post("")
+def create_bill(data: BillCreate):
+    patient = db.get_by_id("patients", data.patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="患者不存在")
+    
+    items_data = [item.model_dump() for item in data.items]
+    amounts = calculate_bill(items_data)
+    
+    bill_id = str(uuid.uuid4())
+    bill = {
+        "patient_id": data.patient_id,
+        "patient_name": data.patient_name,
+        "chart_id": data.chart_id,
+        "appointment_id": data.appointment_id,
+        "doctor_id": data.doctor_id,
+        "items": items_data,
+        "total_amount": amounts["total_amount"],
+        "insurance_amount": amounts["insurance_amount"],
+        "self_amount": amounts["self_amount"],
+        "payment_method": data.payment_method,
+        "status": "paid",
+        "created_at": datetime.now().isoformat(),
+    }
+    db.add("bills", bill, bill_id)
+    
+    return {"id": bill_id, **bill}
